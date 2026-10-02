@@ -11,7 +11,9 @@ import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 
 // ===== VALIDATOR (inicio: lógica pura, sin DOM ni THREE) =====
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-const ITEM_TYPES = ['clay', 'cone', 'limb', 'curve', 'eye', 'paint'];
+const ITEM_TYPES = ['clay', 'cone', 'limb', 'curve', 'eye', 'paint', 'cut', 'bone', 'glue', 'dent', 'stretch'];
+const GEOMETRY_TYPES = ['clay', 'cone', 'limb', 'curve', 'eye', 'paint'];
+const TOOL_TYPES = ['cut', 'bone', 'glue', 'dent', 'stretch'];
 
 function isNum(x) { return typeof x === 'number' && Number.isFinite(x); }
 function isVec3(x) { return Array.isArray(x) && x.length === 3 && x.every(isNum); }
@@ -23,6 +25,19 @@ function checkField(item, path, field, kind) {
   if (kind === 3 && !isVec3(v)) return `${path}: '${field}' debe ser [x, y, z] numérico`;
   if (kind === 2 && !isVec2(v)) return `${path}: '${field}' debe ser [a, b] numérico`;
   if (kind === 'num' && !isNum(v)) return `${path}: '${field}' debe ser un número`;
+  if (kind === 'str' && (typeof v !== 'string' || !v.trim()))
+    return `${path}: '${field}' debe ser un texto no vacío`;
+  if (kind === 'keep' && v !== 'above' && v !== 'below')
+    return `${path}: 'keep' debe ser "above" o "below"`;
+  if (kind === 'intarr' && (!Array.isArray(v) || v.length === 0 || !v.every(x => Number.isInteger(x) && x >= 0)))
+    return `${path}: '${field}' debe ser un arreglo de enteros ≥ 0`;
+  if (kind === 'plane') {
+    if (!v || typeof v !== 'object' || !isVec3(v.point) || !isVec3(v.normal))
+      return `${path}: 'plane' debe ser {point:[x,y,z], normal:[x,y,z]}`;
+    const nn = v.normal;
+    if (nn[0] === 0 && nn[1] === 0 && nn[2] === 0)
+      return `${path}: 'plane.normal' no puede ser [0,0,0]`;
+  }
   if (kind === 'color' && (typeof v !== 'string' || !HEX_COLOR.test(v)))
     return `${path}: 'color' debe ser un hexadecimal como "#cf9455"`;
   if (kind === 'points') {
@@ -32,18 +47,23 @@ function checkField(item, path, field, kind) {
   return null;
 }
 
-function validateItem(item, path) {
+function validateItem(item, path, idx, items) {
   const errors = [];
   if (!item || typeof item !== 'object') return [`${path}: el ítem debe ser un objeto`];
   if (!ITEM_TYPES.includes(item.type))
     return [`${path}: type desconocido '${item.type}' (válidos: ${ITEM_TYPES.join(', ')})`];
   const req = {
-    clay:  [['at', 3], ['size', 3], ['color', 'color']],
-    cone:  [['at', 3], ['size', 2], ['color', 'color']],
-    limb:  [['from', 3], ['to', 3], ['radius', 'num'], ['color', 'color']],
-    curve: [['points', 'points'], ['radius', 'num'], ['color', 'color']],
-    eye:   [['at', 3], ['size', 3], ['color', 'color']],
-    paint: [['at', 3], ['size', 3], ['color', 'color']],
+    clay:    [['at', 3], ['size', 3], ['color', 'color']],
+    cone:    [['at', 3], ['size', 2], ['color', 'color']],
+    limb:    [['from', 3], ['to', 3], ['radius', 'num'], ['color', 'color']],
+    curve:   [['points', 'points'], ['radius', 'num'], ['color', 'color']],
+    eye:     [['at', 3], ['size', 3], ['color', 'color']],
+    paint:   [['at', 3], ['size', 3], ['color', 'color']],
+    cut:     [['plane', 'plane'], ['keep', 'keep']],
+    bone:    [['name', 'str'], ['at', 3]],
+    glue:    [['items', 'intarr']],
+    dent:    [['at', 3], ['radius', 'num'], ['depth', 'num']],
+    stretch: [['axis', 3], ['factor', 'num']],
   }[item.type];
   for (const [field, kind] of req) {
     const e = checkField(item, path, field, kind);
@@ -53,7 +73,59 @@ function validateItem(item, path) {
     errors.push(`${path}: 'taper' debe ser un número`);
   if (item.type === 'paint' && item.rotate !== undefined && !isVec3(item.rotate))
     errors.push(`${path}: 'rotate' debe ser [rx, ry, rz] en radianes`);
+  // campos opcionales de las herramientas
+  if (['cut', 'dent', 'stretch'].includes(item.type) && item.target !== undefined
+      && (!Number.isInteger(item.target) || item.target < 0))
+    errors.push(`${path}: 'target' debe ser un entero ≥ 0`);
+  if (item.type === 'bone' && item.parent !== undefined
+      && (typeof item.parent !== 'string' || !item.parent.trim()))
+    errors.push(`${path}: 'parent' debe ser el nombre de un hueso (texto)`);
+  if (item.type === 'glue' && item.name !== undefined
+      && (typeof item.name !== 'string' || !item.name.trim()))
+    errors.push(`${path}: 'name' debe ser un texto no vacío`);
+  if (item.type === 'stretch' && item.center !== undefined && !isVec3(item.center))
+    errors.push(`${path}: 'center' debe ser [x, y, z] numérico`);
+  if (item.type === 'dent' && isNum(item.radius) && item.radius <= 0)
+    errors.push(`${path}: 'radius' debe ser mayor a 0`);
+  // campos 'bone' / 'glue' en cualquier ítem de geometría
+  if (GEOMETRY_TYPES.includes(item.type)) {
+    if (item.bone !== undefined && (typeof item.bone !== 'string' || !item.bone.trim()))
+      errors.push(`${path}: 'bone' debe ser el nombre de un hueso (texto)`);
+    if (item.glue !== undefined && (typeof item.glue !== 'string' || !item.glue.trim()))
+      errors.push(`${path}: 'glue' debe ser el nombre de un grupo (texto)`);
+  }
+  // las herramientas apuntan a ítems del mismo paso ya construidos
+  if (['cut', 'dent', 'stretch'].includes(item.type)) {
+    const e = checkTargetRef(item, path, idx, items);
+    if (e) errors.push(e);
+  }
+  if (item.type === 'glue' && Array.isArray(item.items)) {
+    item.items.forEach(mi => {
+      if (!Number.isInteger(mi) || mi < 0 || mi >= idx)
+        errors.push(`${path}: 'items' contiene el índice ${mi}: debe ser un ítem ya construido (entero < ${idx})`);
+      else if (!GEOMETRY_TYPES.includes(items[mi] && items[mi].type))
+        errors.push(`${path}: 'items' contiene el índice ${mi}: debe apuntar a un ítem de geometría`);
+    });
+  }
   return errors;
+}
+
+// Verifica que 'target' exista, sea anterior y sea geometría.
+// Si se omite, aplica al ítem de geometría anterior del paso.
+function checkTargetRef(item, path, idx, items) {
+  if (item.target === undefined) {
+    for (let k = idx - 1; k >= 0; k--) {
+      if (items[k] && GEOMETRY_TYPES.includes(items[k].type)) return null;
+    }
+    return `${path}: '${item.type}' sin 'target' y no hay un ítem de geometría anterior en el paso`;
+  }
+  if (!Number.isInteger(item.target) || item.target < 0) return null; // ya reportado arriba
+  if (item.target >= idx)
+    return `${path}: 'target' (${item.target}) debe apuntar a un ítem ya construido (índice < ${idx})`;
+  const tgt = items[item.target];
+  if (!tgt || !GEOMETRY_TYPES.includes(tgt.type))
+    return `${path}: 'target' (${item.target}) debe apuntar a un ítem de geometría (clay, cone, limb, curve, eye, paint)`;
+  return null;
 }
 
 // validateRecipe(obj) -> string[] (lista de errores; vacía = válida)
@@ -73,7 +145,53 @@ function validateRecipe(recipe) {
     if (!Array.isArray(st.items))
       errors.push(`${sp}: requiere 'items' como arreglo`);
     else
-      st.items.forEach((it, j) => errors.push(...validateItem(it, `${sp}.items[${j}]`)));
+      st.items.forEach((it, j) => errors.push(...validateItem(it, `${sp}.items[${j}]`, j, st.items)));
+  });
+  errors.push(...validateBoneRefs(recipe));
+  return errors;
+}
+
+// Segunda pasada: coherencia de huesos en toda la receta
+// (nombres únicos, referencias existentes, sin ciclos, sin uso antes de definir)
+function validateBoneRefs(recipe) {
+  const errors = [];
+  const defs = new Map(); // name -> {step, idx, parent}
+  recipe.steps.forEach((st, si) => {
+    (st.items || []).forEach((it, j) => {
+      if (!it || it.type !== 'bone') return;
+      if (typeof it.name === 'string' && it.name.trim()) {
+        if (defs.has(it.name))
+          errors.push(`steps[${si}].items[${j}]: ya existe un hueso llamado "${it.name}"`);
+        else
+          defs.set(it.name, { step: si, idx: j, parent: it.parent });
+      }
+    });
+  });
+  recipe.steps.forEach((st, si) => {
+    (st.items || []).forEach((it, j) => {
+      if (!it || typeof it !== 'object') return;
+      const at = `steps[${si}].items[${j}]`;
+      if (it.type === 'bone' && typeof it.parent === 'string' && it.parent.trim()) {
+        const d = defs.get(it.parent.trim());
+        if (!d) errors.push(`${at}: 'parent' hace referencia a un hueso inexistente "${it.parent}"`);
+        else if (d.step > si) errors.push(`${at}: 'parent' "${it.parent}" se define después (paso ${d.step + 1})`);
+      }
+      if (GEOMETRY_TYPES.includes(it.type) && typeof it.bone === 'string' && it.bone.trim()) {
+        const d = defs.get(it.bone.trim());
+        if (!d) errors.push(`${at}: 'bone' hace referencia a un hueso inexistente "${it.bone}"`);
+        else if (d.step > si) errors.push(`${at}: el hueso "${it.bone}" se usa antes de definirse (se define en el paso ${d.step + 1})`);
+      }
+    });
+  });
+  defs.forEach((d, name) => {
+    const seen = new Set([name]);
+    let p = d.parent;
+    while (typeof p === 'string' && p.trim()) {
+      if (seen.has(p)) { errors.push(`el hueso "${name}" forma un ciclo de parentesco con "${p}"`); break; }
+      seen.add(p);
+      const pd = defs.get(p);
+      p = pd ? pd.parent : null;
+    }
   });
   return errors;
 }
@@ -88,6 +206,10 @@ const store = {
   playing: false,
   playToken: 0,
   listeners: {},
+  bones: {},        // name -> THREE.Bone
+  boneList: [],     // {name, parent, step} para la UI
+  glueList: [],     // {name, step, members[]} para la UI
+  skeletonRoot: null,
 };
 function on(evt, cb) { (store.listeners[evt] = store.listeners[evt] || []).push(cb); }
 function emit(evt, data) { (store.listeners[evt] || []).forEach(cb => { try { cb(data); } catch (e) { console.warn(e); } }); }
@@ -97,6 +219,7 @@ const viewport = document.getElementById('viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
+renderer.localClippingEnabled = true; // necesario para la herramienta cut
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -323,7 +446,7 @@ function buildItem(item, seed) {
 // ---------- construcción y reproducción ----------
 function disposeGroup(g) {
   g.traverse(o => {
-    if (o.isMesh) {
+    if (o.isMesh || o.isLine || o.isPoints) {
       o.geometry.dispose();
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       mats.forEach(m => m.dispose());
@@ -338,7 +461,211 @@ function clearModel() {
     disposeGroup(c);
   }
   store.stepGroups = [];
+  store.bones = {};
+  store.boneList = [];
+  store.glueList = [];
+  store.skeletonRoot = null;
   store.currentStep = -1;
+}
+
+// ---------- herramientas: cut / bone / glue / dent / stretch ----------
+
+// Resuelve el índice del ítem objetivo dentro del mismo paso.
+// Si se omite 'target', aplica al ítem de geometría anterior. -1 = no hay.
+function resolveTarget(items, j, item) {
+  if (item.target === undefined) {
+    for (let k = j - 1; k >= 0; k--)
+      if (items[k] && GEOMETRY_TYPES.includes(items[k].type)) return k;
+    return -1;
+  }
+  return item.target;
+}
+
+// cut: recorte VISUAL con un plano (clipping). Cada mesh recibe su propio
+// material clonado para que el corte no afecte a otros ítems.
+// NOTA: la exportación (GLB/OBJ/STL) conserva la geometría completa.
+function applyCut(group, item) {
+  if (!group) return;
+  const normal = new THREE.Vector3(item.plane.normal[0], item.plane.normal[1], item.plane.normal[2]);
+  if (normal.lengthSq() < 1e-8) return;
+  normal.normalize();
+  const point = new THREE.Vector3(item.plane.point[0], item.plane.point[1], item.plane.point[2]);
+  const plane = item.keep === 'above'
+    ? new THREE.Plane(normal.clone(), -normal.dot(point))
+    : new THREE.Plane(normal.clone().negate(), normal.dot(point));
+  group.traverse(o => {
+    if (o.isMesh) {
+      o.material = o.material.clone();
+      o.material.clippingPlanes = [plane];
+      o.material.clipShadows = true;
+      o.material.needsUpdate = true;
+    }
+  });
+}
+
+// dent: hunde la superficie hacia adentro (vértices, en espacio mundo,
+// con falloff de coseno suave). depth negativo = abulta hacia afuera.
+function applyDent(group, item) {
+  if (!group || !(item.radius > 0)) return;
+  const centerW = new THREE.Vector3(item.at[0], item.at[1], item.at[2]);
+  group.updateWorldMatrix(true, true);
+  const v = new THREE.Vector3(), w = new THREE.Vector3(), n = new THREE.Vector3();
+  group.traverse(o => {
+    if (!o.isMesh) return;
+    const geo = o.geometry, pos = geo.attributes.position, nor = geo.attributes.normal;
+    if (!pos || !nor) return;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      w.copy(v); o.localToWorld(w);
+      const d = w.distanceTo(centerW);
+      if (d < item.radius) {
+        const falloff = 0.5 * (1 + Math.cos(Math.PI * d / item.radius));
+        n.fromBufferAttribute(nor, i).transformDirection(o.matrixWorld);
+        w.addScaledVector(n, -item.depth * falloff);
+        o.worldToLocal(w);
+        pos.setXYZ(i, w.x, w.y, w.z);
+      }
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+  });
+}
+
+// stretch: estira los vértices a lo largo de un eje (espacio mundo).
+// center por defecto = centro del bounding box del ítem.
+function applyStretch(group, item) {
+  if (!group) return;
+  const axis = new THREE.Vector3(item.axis[0], item.axis[1], item.axis[2]);
+  if (axis.lengthSq() < 1e-8) return;
+  axis.normalize();
+  group.updateWorldMatrix(true, true);
+  const centerW = item.center
+    ? new THREE.Vector3(item.center[0], item.center[1], item.center[2])
+    : new THREE.Box3().setFromObject(group).getCenter(new THREE.Vector3());
+  const k = item.factor - 1;
+  if (k === 0) return;
+  const v = new THREE.Vector3(), w = new THREE.Vector3();
+  group.traverse(o => {
+    if (!o.isMesh) return;
+    const geo = o.geometry, pos = geo.attributes.position;
+    if (!pos) return;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      w.copy(v); o.localToWorld(w);
+      w.addScaledVector(axis, w.clone().sub(centerW).dot(axis) * k);
+      o.worldToLocal(w);
+      pos.setXYZ(i, w.x, w.y, w.z);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+  });
+}
+
+function memberLabel(it, j) {
+  return `ítem ${j + 1} (${(it && it.type) || '?'})`;
+}
+
+function registerGlueMember(name, si, label) {
+  let e = store.glueList.find(x => x.name === name);
+  if (!e) { e = { name, step: si, members: [] }; store.glueList.push(e); }
+  e.members.push(`paso ${si + 1}, ${label}`);
+}
+
+function findGlueGroup(name) {
+  let found = null;
+  modelRoot.traverse(o => {
+    if (!found && o.isGroup && o.userData.isGlue && o.name === name) found = o;
+  });
+  return found;
+}
+
+// Construye un paso: primero la geometría, luego las herramientas en orden
+// (dent/stretch por vértices antes de re-emparentar; cut por materiales;
+// huesos; glue). Devuelve un arreglo alineado con los ítems del paso.
+function buildStepItems(items, si) {
+  const n = items.length;
+  const groups = new Array(n);
+  // 1. geometría (las herramientas dejan un marcador vacío para no romper índices)
+  items.forEach((it, j) => {
+    groups[j] = GEOMETRY_TYPES.includes(it.type)
+      ? buildItem(it, si * 131 + j * 17 + 7)
+      : new THREE.Group();
+  });
+  groups.forEach(g => modelRoot.add(g));
+  modelRoot.updateMatrixWorld(true);
+
+  // 2. dent / stretch (vértices; antes de re-emparentar a huesos/grupos)
+  items.forEach((it, j) => {
+    if (it.type !== 'dent' && it.type !== 'stretch') return;
+    const g = groups[resolveTarget(items, j, it)];
+    if (it.type === 'dent') applyDent(g, it); else applyStretch(g, it);
+  });
+  // 3. cut (materiales)
+  items.forEach((it, j) => {
+    if (it.type !== 'cut') return;
+    applyCut(groups[resolveTarget(items, j, it)], it);
+  });
+  // 4. huesos: crearlos todos primero, luego resolver el parentesco
+  const hasBoneField = it => {
+    const nm = (typeof it.bone === 'string' && it.bone.trim()) ? it.bone.trim() : null;
+    return (nm && store.bones[nm]) || null;
+  };
+  const stepBones = [];
+  items.forEach(it => {
+    if (it.type !== 'bone') return;
+    const b = new THREE.Bone();
+    b.name = it.name;
+    b.position.set(it.at[0], it.at[1], it.at[2]);
+    store.skeletonRoot.add(b);
+    store.bones[it.name] = b;
+    store.boneList.push({ name: it.name, parent: it.parent || null, step: si });
+    stepBones.push(it);
+  });
+  store.skeletonRoot.updateMatrixWorld(true);
+  stepBones.forEach(it => {
+    const b = store.bones[it.name];
+    const pName = (typeof it.parent === 'string' && it.parent.trim()) ? it.parent.trim() : null;
+    const p = pName && store.bones[pName];
+    if (p && p !== b) p.attach(b); // attach conserva la transformada mundial
+  });
+  // 5. glue: primero los ítems sueltos {type:"glue"}, luego los campos "glue".
+  //    Si un ítem tiene "bone" y "glue", el hueso manda y el glue se ignora.
+  items.forEach((it, j) => {
+    if (it.type !== 'glue') return;
+    const name = (it.name && it.name.trim()) || `grupo-${si + 1}-${j + 1}`;
+    let gg = findGlueGroup(name);
+    if (!gg) {
+      gg = new THREE.Group();
+      gg.name = name; gg.userData.isGlue = true;
+      modelRoot.add(gg);
+    }
+    it.items.forEach(mi => {
+      const mg = groups[mi];
+      if (mg && !hasBoneField(items[mi])) {
+        gg.attach(mg);
+        registerGlueMember(name, si, memberLabel(items[mi], mi));
+      }
+    });
+  });
+  items.forEach((it, j) => {
+    if (!GEOMETRY_TYPES.includes(it.type)) return;
+    const g = groups[j];
+    const bone = hasBoneField(it);
+    if (bone) {
+      bone.attach(g);
+    } else if (typeof it.glue === 'string' && it.glue.trim()) {
+      const name = it.glue.trim();
+      let gg = findGlueGroup(name);
+      if (!gg) {
+        gg = new THREE.Group();
+        gg.name = name; gg.userData.isGlue = true;
+        modelRoot.add(gg);
+      }
+      gg.attach(g);
+      registerGlueMember(name, si, memberLabel(it, j));
+    }
+  });
+  return groups;
 }
 
 // build(): construye todo y lo muestra completo
@@ -346,14 +673,28 @@ function build() {
   stop();
   clearModel();
   if (!store.recipe) { updateStepUI(); return; }
+  store.skeletonRoot = new THREE.Group();
+  store.skeletonRoot.name = 'esqueleto';
+  modelRoot.add(store.skeletonRoot);
   store.recipe.steps.forEach((st, si) => {
-    const groups = st.items.map((it, ii) => buildItem(it, si * 131 + ii * 17 + 7));
-    groups.forEach(g => { g.visible = true; modelRoot.add(g); });
+    const groups = buildStepItems(st.items, si);
+    groups.forEach(g => { g.visible = true; });
     store.stepGroups.push(groups);
   });
+  // visualización tenue del esqueleto (se retira al exportar)
+  if (Object.keys(store.bones).length > 0) {
+    const helper = new THREE.SkeletonHelper(store.skeletonRoot);
+    helper.material.transparent = true;
+    helper.material.opacity = 0.35;
+    store.skeletonRoot.add(helper);
+  }
   store.currentStep = store.recipe.steps.length - 1;
   updateStepUI();
-  emit('build', { steps: store.recipe.steps.length });
+  emit('build', {
+    steps: store.recipe.steps.length,
+    bones: Object.keys(store.bones),
+    glueGroups: store.glueList.map(g => g.name),
+  });
   save();
 }
 
@@ -436,6 +777,7 @@ const btnBuild = $('btnBuild'), btnPlay = $('btnPlay'), btnStop = $('btnStop');
 const stepSlider = $('stepSlider'), stepCounter = $('stepCounter');
 const recipeText = $('recipeText'), errorList = $('errorList'), stepsList = $('stepsList');
 const emptyHint = $('emptyHint');
+const rigInfo = $('rigInfo'), bonesList = $('bonesList'), glueList = $('glueList');
 
 function stepsCount() { return store.recipe ? store.recipe.steps.length : 0; }
 
@@ -485,7 +827,45 @@ function buildStepsList() {
     li.addEventListener('click', () => { setStep(i); switchTab('modelo'); });
     stepsList.appendChild(li);
   });
+  buildRigInfo();
   updateStepUI();
+}
+
+// Lista huesos y grupos de pegado detectados en la receta (pestaña Pasos)
+function buildRigInfo() {
+  bonesList.innerHTML = '';
+  glueList.innerHTML = '';
+  const bones = [], glueMap = new Map();
+  if (store.recipe) {
+    store.recipe.steps.forEach((st, si) => {
+      (st.items || []).forEach((it, j) => {
+        if (!it || typeof it !== 'object') return;
+        if (it.type === 'bone' && it.name) {
+          bones.push({ name: it.name, parent: it.parent || null, step: si });
+        }
+        if (it.type === 'glue') {
+          const nm = (it.name && String(it.name).trim()) || `grupo-${si + 1}-${j + 1}`;
+          if (!glueMap.has(nm)) glueMap.set(nm, []);
+          (it.items || []).forEach(mi => glueMap.get(nm).push(`paso ${si + 1}, ítem ${mi + 1}`));
+        } else if (GEOMETRY_TYPES.includes(it.type) && typeof it.glue === 'string' && it.glue.trim()) {
+          const nm = it.glue.trim();
+          if (!glueMap.has(nm)) glueMap.set(nm, []);
+          glueMap.get(nm).push(`paso ${si + 1}, ítem ${j + 1}`);
+        }
+      });
+    });
+  }
+  bones.forEach(b => {
+    const li = document.createElement('li');
+    li.textContent = `🦴 ${b.name}` + (b.parent ? ` ← ${b.parent}` : '') + ` (paso ${b.step + 1})`;
+    bonesList.appendChild(li);
+  });
+  glueMap.forEach((members, name) => {
+    const li = document.createElement('li');
+    li.textContent = `🔗 ${name}: ${members.join('; ')}`;
+    glueList.appendChild(li);
+  });
+  rigInfo.classList.toggle('hidden', bones.length === 0 && glueMap.size === 0);
 }
 
 function showErrors(errors) {
@@ -560,8 +940,13 @@ function withExportReady(fn) {
   if (wasPlaying) stop();
   const prev = store.currentStep;
   eachGroup(g => { g.visible = true; g.scale.setScalar(1); });
+  // el esqueleto de visualización no se exporta; el cut es visual
+  // (la geometría exportada conserva su forma completa)
+  const skel = store.skeletonRoot;
+  if (skel && skel.parent) skel.parent.remove(skel);
   modelRoot.updateMatrixWorld(true);
   const out = fn();
+  if (skel) modelRoot.add(skel);
   if (prev >= 0) setStep(prev);
   else eachGroup((g, si) => { g.visible = false; });
   updateStepUI();
@@ -701,7 +1086,7 @@ $('btnExample').addEventListener('click', async () => {
 
 // ---------- API programática ----------
 window.Mesa = {
-  version: '1.0.0',
+  version: '1.1.0',
   loadRecipe, getRecipe, build, play, stop, setStep, getStep,
   exportGLB, exportOBJ, exportSTL, exportJSON,
   setView, on,
