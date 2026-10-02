@@ -1070,19 +1070,21 @@ $('btnExportJson').addEventListener('click', () => {
   catch (err) { showErrors([err.message]); }
 });
 
-$('btnExample').addEventListener('click', async () => {
+async function loadExampleFile(path, label) {
   try {
-    const r = await fetch('recetas/perro.json');
+    const r = await fetch(path);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     recipeText.value = await r.text();
     loadFromTextarea();
     switchTab('modelo');
   } catch (e) {
-    showErrors(['No se pudo cargar el ejemplo automáticamente (' + e.message + '). ' +
-      'Abre este sitio con un servidor local o usa Importar .json con recetas/perro.json.']);
+    showErrors(['No se pudo cargar ' + label + ' automáticamente (' + e.message + '). ' +
+      'Abre este sitio con un servidor local o usa Importar .json con ' + path + '.']);
     switchTab('comandos');
   }
-});
+}
+$('btnExample').addEventListener('click', () => loadExampleFile('recetas/perro.json', 'el ejemplo del perro'));
+$('btnDemoTools').addEventListener('click', () => loadExampleFile('recetas/demo-herramientas.json', 'la demo de herramientas'));
 
 // ---------- API programática ----------
 window.Mesa = {
