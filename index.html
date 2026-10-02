@@ -48,6 +48,108 @@
 
 <main>
   <section id="tab-modelo" class="tab-panel active">
+    <div class="toolcats" role="group" aria-label="Herramientas">
+      <button id="toolCatMove" data-cat="move">✥ Mover</button>
+      <button id="toolCatSculpt" data-cat="sculpt">🖌 Esculpir</button>
+      <button id="toolCatModel" data-cat="model">🧱 Modelar</button>
+      <button id="toolCatPrim" data-cat="prim">➕ Primitiva</button>
+    </div>
+    <div id="toolPanel" class="tool-panel hidden">
+      <div id="panel-move" class="tool-form hidden">
+        <h3>Mover / rotar / escalar</h3>
+        <div class="fld"><label>Objetivo</label><select id="mvTarget"></select></div>
+        <div class="fld"><label>Mover x,y,z</label>
+          <div class="row3"><input id="mvMX" type="number" step="0.1" value="0"><input id="mvMY" type="number" step="0.1" value="0"><input id="mvMZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fld"><label>Rotar x,y,z (grados)</label>
+          <div class="row3"><input id="mvRX" type="number" step="5" value="0"><input id="mvRY" type="number" step="5" value="0"><input id="mvRZ" type="number" step="5" value="0"></div></div>
+        <div class="fld"><label>Escala x,y,z</label>
+          <div class="row3"><input id="mvSX" type="number" step="0.1" value="1"><input id="mvSY" type="number" step="0.1" value="1"><input id="mvSZ" type="number" step="0.1" value="1"></div></div>
+        <div class="fld"><label>Pivote</label>
+          <select id="mvPivot"><option value="own">Propio (centro)</option><option value="cursor">Cursor 3D</option><option value="custom">Personalizado</option></select>
+          <div class="row3"><input id="mvPX" type="number" step="0.1" value="0" aria-label="Pivote x"><input id="mvPY" type="number" step="0.1" value="0" aria-label="Pivote y"><input id="mvPZ" type="number" step="0.1" value="0" aria-label="Pivote z"></div></div>
+        <button id="btnApplyMove" class="primary">Aplicar movimiento</button>
+      </div>
+      <div id="panel-sculpt" class="tool-form hidden">
+        <h3>Pincel de esculpido</h3>
+        <div class="fld"><label>Pincel</label><select id="scBrush"></select></div>
+        <div class="fld"><label>Objetivo</label><select id="scTarget"></select></div>
+        <div class="fld"><label>Centro x,y,z</label>
+          <div class="row3"><input id="scX" type="number" step="0.1" value="0"><input id="scY" type="number" step="0.1" value="0"><input id="scZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fldrow">
+          <div class="fld"><label>Radio</label><input id="scRadius" type="number" step="0.1" min="0.05" value="0.5"></div>
+          <div class="fld"><label>Fuerza</label><input id="scStrength" type="number" step="0.05" value="0.2"></div>
+        </div>
+        <div class="fld"><label>Dirección x,y,z</label>
+          <div class="row3"><input id="scDX" type="number" step="0.1" value="0"><input id="scDY" type="number" step="0.1" value="1"><input id="scDZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fld"><label>Eje x,y,z + ángulo° (pose)</label>
+          <div class="row4"><input id="scAX" type="number" step="0.1" value="0"><input id="scAY" type="number" step="0.1" value="1"><input id="scAZ" type="number" step="0.1" value="0"><input id="scAngle" type="number" step="5" value="15"></div></div>
+        <div class="fldrow">
+          <div class="fld"><label>Color (pinceles de pintura)</label><input id="scColor" type="color" value="#e08a8a"></div>
+          <div class="fld"><label>Máscara 0..1</label><input id="scValue" type="number" step="0.05" min="0" max="1" value="1"></div>
+          <div class="fld"><label>Filtro (mesh_filter)</label>
+            <select id="scFilter"><option value="smooth">smooth</option><option value="inflate">inflate</option><option value="sharpen">sharpen</option></select></div>
+          <div class="fld"><label>Tolerancia (máscara por color)</label><input id="scTol" type="number" step="0.05" min="0" value="0.15"></div>
+        </div>
+        <div class="fld"><label>Caja mín x,y,z</label>
+          <div class="row3"><input id="scMinX" type="number" step="0.1" value="-0.5"><input id="scMinY" type="number" step="0.1" value="-0.5"><input id="scMinZ" type="number" step="0.1" value="-0.5"></div></div>
+        <div class="fld"><label>Caja máx x,y,z</label>
+          <div class="row3"><input id="scMaxX" type="number" step="0.1" value="0.5"><input id="scMaxY" type="number" step="0.1" value="0.5"><input id="scMaxZ" type="number" step="0.1" value="0.5"></div></div>
+        <button id="btnApplySculpt" class="primary">Aplicar pincel</button>
+      </div>
+      <div id="panel-model" class="tool-form hidden">
+        <h3>Operación de modelado</h3>
+        <div class="fld"><label>Operación</label>
+          <select id="mdOp">
+            <option value="bevel">bevel (bisel ≈suavizar)</option>
+            <option value="extrude">extrude (extruir)</option>
+            <option value="inset">inset (hundido plano)</option>
+            <option value="knife">knife (cuchillo)</option>
+            <option value="cut">cut (corte por plano)</option>
+            <option value="loop_cut">loop_cut (≈corte)</option>
+            <option value="spin">spin (giro radial)</option>
+            <option value="shear">shear (cizalla)</option>
+            <option value="shrink_fatten">shrink/fatten</option>
+            <option value="dent">dent (hundir)</option>
+            <option value="stretch">stretch (alargar)</option>
+          </select></div>
+        <div class="fld"><label>Objetivo</label><select id="mdTarget"></select></div>
+        <div class="fldrow">
+          <div class="fld"><label>Cantidad</label><input id="mdAmount" type="number" step="0.05" value="0.1"></div>
+          <div class="fld"><label>Distancia</label><input id="mdDist" type="number" step="0.1" value="0.5"></div>
+          <div class="fld"><label>Factor</label><input id="mdFactor" type="number" step="0.1" value="1.5"></div>
+          <div class="fld"><label>Ángulo° / pasos (spin)</label>
+            <div class="row2"><input id="mdAngle" type="number" step="15" value="90"><input id="mdSteps" type="number" step="1" min="1" value="4"></div></div>
+        </div>
+        <div class="fld"><label>Dirección x,y,z</label>
+          <div class="row3"><input id="mdDX" type="number" step="0.1" value="0"><input id="mdDY" type="number" step="0.1" value="1"><input id="mdDZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fld"><label>Eje x,y,z</label>
+          <div class="row3"><input id="mdAX" type="number" step="0.1" value="0"><input id="mdAY" type="number" step="0.1" value="1"><input id="mdAZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fld"><label>Centro / punto x,y,z (inset, dent)</label>
+          <div class="row3"><input id="mdIX" type="number" step="0.1" value="0"><input id="mdIY" type="number" step="0.1" value="0"><input id="mdIZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fld"><label>Radio / profundidad</label>
+          <div class="row2"><input id="mdRadius" type="number" step="0.1" min="0.05" value="0.4"><input id="mdDepth" type="number" step="0.05" value="0.2"></div></div>
+        <div class="fld"><label>Plano: punto x,y,z</label>
+          <div class="row3"><input id="mdPPX" type="number" step="0.1" value="0"><input id="mdPPY" type="number" step="0.1" value="0"><input id="mdPPZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fld"><label>Plano: normal x,y,z + conservar</label>
+          <div class="row4"><input id="mdPNX" type="number" step="0.1" value="1"><input id="mdPNY" type="number" step="0.1" value="0"><input id="mdPNZ" type="number" step="0.1" value="0">
+          <select id="mdKeep"><option value="above">above</option><option value="below">below</option></select></div></div>
+        <button id="btnApplyModel" class="primary">Aplicar operación</button>
+      </div>
+      <div id="panel-prim" class="tool-form hidden">
+        <h3>Añadir primitiva</h3>
+        <div class="fld"><label>Forma</label>
+          <select id="prShape"><option value="cube">cube</option><option value="sphere">sphere</option><option value="cylinder">cylinder</option><option value="cone">cone</option><option value="torus">torus</option></select></div>
+        <div class="fld"><label>Posición x,y,z</label>
+          <div class="row3"><input id="prX" type="number" step="0.1" value="0"><input id="prY" type="number" step="0.1" value="1"><input id="prZ" type="number" step="0.1" value="0"></div></div>
+        <div class="fldrow">
+          <div class="fld"><label>Medida ("1" o "1,2,1")</label><input id="prSize" type="text" value="1" inputmode="decimal"></div>
+          <div class="fld"><label>Color</label><input id="prColor" type="color" value="#cf9455"></div>
+        </div>
+        <button id="btnApplyPrim" class="primary">Añadir primitiva</button>
+      </div>
+      <div id="toolStatus" class="tool-status"></div>
+    </div>
+    <div id="measureReadout" class="measure-readout hidden"></div>
     <div id="viewport"></div>
     <div id="emptyHint" class="empty-hint hidden">
       No hay receta cargada. Ve a la pestaña <b>Comandos</b> y pulsa <b>Cargar ejemplo (perro)</b> 🐶
@@ -83,6 +185,6 @@
   </section>
 </main>
 
-<script type="module" src="js/app.js?v=1.1.1"></script>
+<script type="module" src="js/app.js?v=1.2.0"></script>
 </body>
 </html>
