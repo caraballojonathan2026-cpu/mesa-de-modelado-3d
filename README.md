@@ -73,16 +73,83 @@ construidos (índice menor al actual) y de geometría (`clay`, `cone`, `limb`,
 La pestaña **Comandos** valida la receta y lista errores claros con índice, por ejemplo:
 `steps[7].items[1]: eye requiere 'at'`.
 
-Hay recetas de ejemplo en `recetas/`: `perro.json` ("Perro de Vex", 10 pasos) y
+Hay recetas de ejemplo en `recetas/`: `perro.json` ("Perro de Vex", 10 pasos),
 `demo-herramientas.json` (6 pasos que muestran `cut`, `bone`, `glue`, `dent` y
-`stretch` en acción).
+`stretch` en acción) y `test-brush.json` (pinceles de esculpido).
 
 La pestaña **Pasos** también lista los huesos y grupos de pegado de la receta.
+
+## Nuevos comandos (v1.2.0)
+
+La mesa sigue siendo arcilla por recetas (blobs), no malla topológica editable;
+las herramientas de Blender se adaptan honestamente a ese modelo.
+
+| type | campos | qué hace |
+|------|--------|----------|
+| `sculpt` | `brush` (ver lista), `at [x,y,z]`, `radius` (> 0), `strength`, `target?` + opcionales `dir`, `axis`, `angle` (rad), `value` (0..1), `color`, `filter` ("smooth"\|"inflate"\|"sharpen"), `box_min`/`box_max`, `tolerance` | Motor único de deformación por vértices en espacio mundo con falloff de coseno suave y máscara por geometría (atributo `mask` que resiste otros pinceles). Cada pincel es una variante (ver tabla de pinceles) |
+| `transform` | `target?`, `move? [x,y,z]`, `rotate? [rx,ry,rz]` (rad), `scale?` (número o `[sx,sy,sz]`), `pivot?` ("own"\|"cursor"\|[x,y,z]) | Mover / rotar / escalar por vértices (cubre move, rotate, scale, transform). Requiere al menos una operación |
+| `primitive` | `shape` ("cube"\|"sphere"\|"cylinder"\|"cone"\|"torus"), `at`, `size` (número o `[..]`), `color` | Primitiva como ítem de geometría (cubre "add cube" y más) |
+| `bevel` | `amount`, `target?` | **Aproximación:** suavizado + inflado leve (sin topología de bordes en blobs) |
+| `extrude` | `dir [x,y,z]`, `distance`, `target?`, `name?` | Clona el ítem desplazado y pega original+copia en un grupo |
+| `inset` | `at`, `radius` (> 0), `depth`, `target?` | Hundido de fondo plano (dent con meseta) |
+| `knife` | igual que `cut` | Alias de `cut` |
+| `loop_cut` | igual que `cut` | **Mapeado a `cut`:** en blobs no hay loops de aristas |
+| `spin` | `axis [x,y,z]`, `angle` (rad), `target?`, `steps?` (≥ 1, defecto 4), `center? [x,y,z]` | Duplicados radiales pegados en un grupo |
+| `shear` | `axis [x,y,z]`, `factor`, `target?` | Cizalla: desplaza a lo largo de `axis` proporcional a la altura sobre el centro |
+| `shrink_fatten` | `amount`, `target?` | A lo largo de las normales (negativo = encoger) |
+
+### Pinceles de `sculpt` (nombres `snake_case`)
+
+Unidades de `strength` según el pincel: unidades de mundo para los de
+desplazamiento (draw, inflate, grab…), radianes para `rotate` (torsión),
+0..1 aprox. para `smooth`/`slide_relax`, y `angle` (radianes) para `pose`.
+`at`/`radius` definen la zona (falloff de coseno suave); la máscara
+(`mask`, `box_mask`, `mask_by_color`) protege vértices de otros pinceles.
+
+draw, draw_sharp, clay, clay_strips, clay_thumb, layer (≈una pasada),
+inflate, blob, crease, smooth, flatten, fill (≈suavizar+inflar),
+scrape (≈aplanar), pinch, grab, elastic_deform, snake_hook, thumb, pose
+(rota la zona `angle` radianes sobre `axis`), nudge, rotate (torsión),
+slide_relax, mask (pinta máscara con `value`), paint (vertex colors),
+smear, box_mask, mask_by_color, mesh_filter (`filter`: smooth/inflate/sharpen
+global), color_filter, simplify (≈smooth fuerte), multires_eraser (≈smooth),
+multires_smear (≈smear), draw_face_sets (≈paint), edit_face_set (≈paint),
+box_face_set, line_project (≈flatten por `dir`), box_trim (6 planos de recorte
+visual, como `cut`), box_hide (colapsa vértices en caja hacia su centro),
+boundary (≈smooth), cloth (≈smooth + micro ruido).
+
+### Mapeo Blender → mesa (v1.2.0)
+
+**Generales / viewport:** select box → clic en un mesh lo selecciona (resaltado;
+`Mesa.select(paso, ítem)`, `Mesa.selectedName()`); Cursor → `Mesa.setCursor([x,y,z])`
+(cruz visible; lo usa `pivot:"cursor"`); Move/Rotate/Scale/Transform → `transform`;
+Measure → `Mesa.measure(a, b)` (línea + readout con la distancia); Add Cube →
+`primitive`; Annotate → **no aplica** (es anotación de viewport, sin equivalente en
+recetas).
+
+**Modeling:** Extrude Region → `extrude`; Bevel → `bevel` (aproximación);
+Loop Cut → `loop_cut` (mapeado a `cut`, sin loops en blobs); Knife → `knife`;
+Spin → `spin`; Smooth → `sculpt`/`smooth`; Edge Slide → **no aplica** (sin aristas
+en blobs); Shrink/Fatten → `shrink_fatten`; Shear → `shear`; Rip Region →
+**no aplica** (requiere topología de malla); Insert Faces / Poly Build →
+**no aplican** (la mesa construye por blobs, no por caras).
+
+**Sculpting:** todos los pinceles listados arriba via `sculpt` + `brush`;
+las adaptaciones están marcadas con (≈…) en la lista de pinceles.
+
+### Panel táctil
+
+En la pestaña **Modelo**, la barra ✥ Mover | 🖌 Esculpir | 🧱 Modelar | ➕ Primitiva
+abre un panel con formulario (botones y campos grandes, usables en Android y
+clicables por automatización: ids `toolCatMove`, `toolCatSculpt`, `toolCatModel`,
+`toolCatPrim`, `btnApplyMove`, `btnApplySculpt`, `btnApplyModel`, `btnApplyPrim`).
+Cada aplicación añade el comando al **último paso** de la receta y reconstruye:
+la receta sigue siendo la fuente de verdad (todo queda guardado/exportado).
 
 ## API `window.Mesa`
 
 ```js
-Mesa.version;                    // "1.1.0"
+Mesa.version;                    // "1.2.0"
 Mesa.loadRecipe(obj | jsonString) // → { ok, errors[] }
 Mesa.getRecipe();                // receta actual (objeto) o null
 Mesa.build();                    // construye y muestra todo
@@ -91,11 +158,20 @@ Mesa.stop();                     // detiene la reproducción
 Mesa.setStep(n);                 // muestra pasos 0..n (base 0) → n aplicado
 Mesa.getStep();                  // paso actual (base 0)
 Mesa.setView('iso'|'frente'|'lado'|'arriba');
-Mesa.on('load'|'build'|'play'|'stop'|'step'|'error'|'export', cb);
+Mesa.on('load'|'build'|'play'|'stop'|'step'|'error'|'export'|'select', cb);
 await Mesa.exportGLB();          // descarga .glb binario → Promise<Blob>
 Mesa.exportOBJ();                // descarga .obj → Blob
 Mesa.exportSTL();                // descarga .stl binario → Blob
 Mesa.exportJSON();               // descarga la receta .json → Blob
+// herramientas (v1.2.0): añaden el comando al último paso y reconstruyen
+Mesa.applyTool(type, params);    // → { ok, errors[] }
+Mesa.sculpt(params);             // = applyTool('sculpt', params)
+Mesa.transform(params);          // = applyTool('transform', params)
+Mesa.primitive(params);          // = applyTool('primitive', params)
+Mesa.select(paso, item);         // selecciona por índices base 0 → bool
+Mesa.selectedName();             // "paso 3, ítem 2 (clay)" o null
+Mesa.setCursor([x, y, z]);       // muestra la cruz del cursor 3D
+Mesa.measure([x1,y1,z1], [x2,y2,z2]); // → distancia (dibuja línea + readout)
 ```
 
 Parámetros URL:
