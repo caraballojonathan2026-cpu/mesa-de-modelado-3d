@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es-419">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mesa de modelado 3D</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<header class="topbar">
+  <h1>🖤 Mesa de modelado 3D</h1>
+  <div class="toolbar">
+    <button id="btnBuild" class="primary">Construir</button>
+    <button id="btnPlay">▶ Ver construcción</button>
+    <button id="btnStop" disabled>⏹</button>
+    <input type="range" id="stepSlider" min="0" max="0" value="0" aria-label="Paso de construcción">
+    <span id="stepCounter" class="counter">Paso 0/0</span>
+    <div class="views" role="group" aria-label="Vistas">
+      <button data-view="iso" class="active">ISO</button>
+      <button data-view="frente">FRENTE</button>
+      <button data-view="lado">LADO</button>
+      <button data-view="arriba">ARRIBA</button>
+    </div>
+    <div class="export-menu">
+      <button id="btnExportMenu">Exportar ▾</button>
+      <div id="exportDropdown" class="export-dropdown hidden">
+        <button data-export="glb">GLB (.glb) — recomendado</button>
+        <button data-export="obj">OBJ (.obj)</button>
+        <button data-export="stl">STL (.stl)</button>
+        <button data-export="json">JSON (receta)</button>
+      </div>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button data-tab="modelo" class="active">Modelo</button>
+    <button data-tab="comandos">Comandos</button>
+    <button data-tab="pasos">Pasos</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-modelo" class="tab-panel active">
+    <div id="viewport"></div>
+    <div id="emptyHint" class="empty-hint hidden">
+      No hay receta cargada. Ve a la pestaña <b>Comandos</b> y pulsa <b>Cargar ejemplo (perro)</b> 🐶
+    </div>
+  </section>
+
+  <section id="tab-comandos" class="tab-panel">
+    <div class="cmd-bar">
+      <button id="btnValidate">Validar</button>
+      <label class="file-btn">Importar .json
+        <input type="file" id="fileInput" accept=".json,application/json" hidden>
+      </label>
+      <button id="btnExportJson">Exportar .json</button>
+      <button id="btnExample">Cargar ejemplo (perro)</button>
+    </div>
+    <textarea id="recipeText" spellcheck="false" placeholder='{"name": "Mi modelo", "steps": [{"label": "Base", "items": [{"type": "clay", "at": [0,0,0], "size": [1,1,1], "color": "#cf9455"}]}]}'></textarea>
+    <div id="errorList" class="errors"></div>
+  </section>
+
+  <section id="tab-pasos" class="tab-panel">
+    <ol id="stepsList" class="steps"></ol>
+  </section>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
