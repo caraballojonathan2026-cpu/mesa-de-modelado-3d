@@ -186,6 +186,18 @@ main { padding: 0.8rem; max-width: 1100px; margin: 0 auto; }
 }
 .steps li p { margin: 0.35rem 0 0; font-size: 0.9rem; color: var(--muted); }
 
+.rig-info.hidden { display: none; }
+.rig-info { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.8rem; }
+.rig-block {
+  flex: 1 1 220px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.8rem;
+}
+.rig-block h3 { margin: 0 0 0.35rem; font-size: 0.95rem; color: var(--muted); }
+.rig-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
+
 @media (max-width: 640px) {
   .topbar h1 { font-size: 1.1rem; }
   #viewport { height: 56vh; min-height: 320px; }
