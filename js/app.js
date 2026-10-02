@@ -317,6 +317,7 @@ function validateBoneRefs(recipe) {
 
 // ---------- estado ----------
 const STORE_KEY = 'mesa-de-modelado-3d';
+const APP_VERSION = '1.2.0'; // al subirla, el ejemplo guardado se refresca solo
 const store = {
   recipe: null,
   stepGroups: [],   // stepGroups[s] = [THREE.Group, ...] (alineado con ítems)
@@ -1705,7 +1706,7 @@ function syncTextarea() {
 }
 
 // ---------- recetas: cargar / validar ----------
-function loadRecipe(input) {
+function loadRecipe(input, opts) {
   let obj;
   if (typeof input === 'string') {
     try { obj = JSON.parse(input); }
@@ -1714,6 +1715,7 @@ function loadRecipe(input) {
   const errors = validateRecipe(obj);
   if (errors.length) { emit('error', errors); return { ok: false, errors }; }
   store.recipe = obj;
+  store.fromExample = !!(opts && opts.fromExample);
   syncTextarea();
   buildStepsList();
   build();
@@ -1828,7 +1830,7 @@ function exportJSON() {
 let saveTimer = null;
 function save() {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ recipe: store.recipe, step: store.currentStep }));
+    localStorage.setItem(STORE_KEY, JSON.stringify({ recipe: store.recipe, step: store.currentStep, appV: APP_VERSION, fromExample: !!store.fromExample }));
   } catch (e) { /* almacenamiento no disponible */ }
 }
 function saveSoon() {
@@ -1901,7 +1903,8 @@ async function loadExampleFile(path, label) {
     const r = await fetch(path);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     recipeText.value = await r.text();
-    loadFromTextarea();
+    const res = loadRecipe(recipeText.value, { fromExample: true });
+    if (res.ok && store.recipe) showOk(`Receta "${store.recipe.name}" cargada: ${store.recipe.steps.length} pasos.`);
     switchTab('modelo');
   } catch (e) {
     showErrors(['No se pudo cargar ' + label + ' automáticamente (' + e.message + '). ' +
@@ -2089,7 +2092,7 @@ $('btnApplyPrim').addEventListener('click', () => {
 
 // ---------- API programática ----------
 window.Mesa = {
-  version: '1.2.0',
+  version: APP_VERSION,
   loadRecipe, getRecipe, build, play, stop, setStep, getStep,
   exportGLB, exportOBJ, exportSTL, exportJSON,
   setView, on,
@@ -2136,7 +2139,10 @@ async function init() {
     }
   } else {
     const saved = loadSaved();
-    if (saved && saved.recipe) {
+    // Si lo guardado era el ejemplo y la app se actualizó, refrescarlo solo
+    // (no se toca una receta propia del usuario).
+    const exampleStale = saved && saved.fromExample && saved.appV !== APP_VERSION;
+    if (saved && saved.recipe && !exampleStale) {
       const res = loadRecipe(saved.recipe);
       loaded = res.ok;
       if (loaded && Number.isInteger(saved.step)) setStep(saved.step);
